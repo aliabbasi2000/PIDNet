@@ -20,6 +20,7 @@ from tensorboardX import SummaryWriter
 import _init_paths
 import models
 import datasets
+from datasets.loveda import LoveDA
 from configs import config
 from configs import update_config
 from utils.criterion import CrossEntropy, OhemCrossEntropy, BondaryLoss
@@ -32,7 +33,7 @@ def parse_args():
     
     parser.add_argument('--cfg',
                         help='experiment configure file name',
-                        default="configs/cityscapes/pidnet_small_cityscapes.yaml",
+                        default="configs/loveda/pidnet_small_loveda.yaml",
                         type=str)
     parser.add_argument('--seed', type=int, default=304)    
     parser.add_argument('opts',
@@ -82,16 +83,26 @@ def main():
     batch_size = config.TRAIN.BATCH_SIZE_PER_GPU * len(gpus)
     # prepare data
     crop_size = (config.TRAIN.IMAGE_SIZE[1], config.TRAIN.IMAGE_SIZE[0])
-    train_dataset = eval('datasets.'+config.DATASET.DATASET)(
-                        root=config.DATASET.ROOT,
-                        list_path=config.DATASET.TRAIN_SET,
-                        num_classes=config.DATASET.NUM_CLASSES,
-                        multi_scale=config.TRAIN.MULTI_SCALE,
-                        flip=config.TRAIN.FLIP,
-                        ignore_label=config.TRAIN.IGNORE_LABEL,
-                        base_size=config.TRAIN.BASE_SIZE,
-                        crop_size=crop_size,
-                        scale_factor=config.TRAIN.SCALE_FACTOR)
+
+    if config.DATASET.DATASET == 'loveda':
+        train_dataset = LoveDA(
+            image_dir='data/loveda/images_png',
+            mask_dir='data/loveda/masks_png',
+            transforms=None  # Add any required transformations here
+        )
+    else:
+        train_dataset = eval('datasets.' + config.DATASET.DATASET)(
+            root=config.DATASET.ROOT,
+            list_path=config.DATASET.TRAIN_SET,
+            num_classes=config.DATASET.NUM_CLASSES,
+            multi_scale=config.TRAIN.MULTI_SCALE,
+            flip=config.TRAIN.FLIP,
+            ignore_label=config.TRAIN.IGNORE_LABEL,
+            base_size=config.TRAIN.BASE_SIZE,
+            crop_size=crop_size,
+            scale_factor=config.TRAIN.SCALE_FACTOR
+        )
+
 
     trainloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -103,15 +114,24 @@ def main():
 
 
     test_size = (config.TEST.IMAGE_SIZE[1], config.TEST.IMAGE_SIZE[0])
-    test_dataset = eval('datasets.'+config.DATASET.DATASET)(
-                        root=config.DATASET.ROOT,
-                        list_path=config.DATASET.TEST_SET,
-                        num_classes=config.DATASET.NUM_CLASSES,
-                        multi_scale=False,
-                        flip=False,
-                        ignore_label=config.TRAIN.IGNORE_LABEL,
-                        base_size=config.TEST.BASE_SIZE,
-                        crop_size=test_size)
+
+    if config.DATASET.DATASET == 'loveda':
+        test_dataset = LoveDA(
+            image_dir=os.path.join(config.DATASET.ROOT, 'data/loveda/images_png'),
+            mask_dir=os.path.join(config.DATASET.ROOT, 'data/loveda/masks_png'),
+            transforms=None  # Add required transformations
+        )
+    else:
+        test_dataset = eval('datasets.' + config.DATASET.DATASET)(
+            root=config.DATASET.ROOT,
+            list_path=config.DATASET.TEST_SET,
+            num_classes=config.DATASET.NUM_CLASSES,
+            multi_scale=False,
+            flip=False,
+            ignore_label=config.TRAIN.IGNORE_LABEL,
+            base_size=config.TEST.BASE_SIZE,
+            crop_size=test_size
+        )
 
     testloader = torch.utils.data.DataLoader(
         test_dataset,
