@@ -43,7 +43,7 @@ class LoveDA(BaseDataset):
 
         # Define class weights for LoveDA (these are placeholders, adjust if needed)
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.class_weights = torch.FloatTensor([1.0, 2.0, 2.0, 1.5, 1.5, 1.0, 1.2])
+        self.class_weights = torch.FloatTensor([1.0, 2.0, 2.0, 1.5, 1.5, 1.0, 1.2]).to(device)
 
 
         self.bd_dilate_size = bd_dilate_size
