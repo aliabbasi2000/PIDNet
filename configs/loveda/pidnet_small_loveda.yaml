@@ -2,7 +2,7 @@ CUDNN:
   BENCHMARK: true
   DETERMINISTIC: false
   ENABLED: true
-GPUS: []
+GPUS: (0,1)
 OUTPUT_DIR: 'output'
 LOG_DIR: 'log'
 WORKERS: 3
@@ -10,7 +10,7 @@ PRINT_FREQ: 10
 
 DATASET:
   DATASET: loveda
-  ROOT: loveda/  
+  ROOT: data/
   TRAIN_SET: 'list/loveda/train.lst'  # Training list file
   TEST_SET: 'list/loveda/val.lst'  # Validation list file
   NUM_CLASSES: 7  # Update this to match the number of classes in LoveDA
@@ -32,7 +32,7 @@ TRAIN:
   - 1024  # Adjusted to LoveDA dataset resolution
   - 1024
   BASE_SIZE: 1024
-  BATCH_SIZE_PER_GPU: 6  # Adjust based on GPU memory
+  BATCH_SIZE_PER_GPU: 2  # Adjust based on GPU memory
   SHUFFLE: true
   BEGIN_EPOCH: 0
   END_EPOCH: 20  # Set training epochs to 20

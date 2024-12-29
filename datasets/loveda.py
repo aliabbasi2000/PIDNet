@@ -1,142 +1,90 @@
-import warnings
-warnings.filterwarnings('ignore')
-from torch.utils.data import Dataset
-import glob
+# ------------------------------------------------------------------------------
+# Implementation of LoveDA dataset class, compatible with PIDNet
+# ------------------------------------------------------------------------------
+
 import os
-from skimage.io import imread
-from torch.utils.data import DataLoader
-from albumentations.pytorch import ToTensorV2
-from albumentations import HorizontalFlip, VerticalFlip, RandomRotate90, Normalize, RandomCrop, RandomScale
-from albumentations import OneOf, Compose
-import ever as er
-from collections import OrderedDict
-from ever.interface import ConfigurableMixin
-from torch.utils.data import SequentialSampler
-from ever.api.data import distributed, CrossValSamplerGenerator
+import cv2
 import numpy as np
-import logging
 from PIL import Image
 
-logger = logging.getLogger(__name__)
+import torch
+from .base_dataset import BaseDataset
 
-COLOR_MAP = OrderedDict(
-    Background=(255, 255, 255),
-    Building=(255, 0, 0),
-    Road=(255, 255, 0),
-    Water=(0, 0, 255),
-    Barren=(159, 129, 183),
-    Forest=(0, 255, 0),
-    Agricultural=(255, 195, 128),
-)
+class LoveDA(BaseDataset):
+    def __init__(self, 
+                 root, 
+                 list_path,
+                 num_classes=7,
+                 multi_scale=True, 
+                 flip=True, 
+                 ignore_label=255, 
+                 base_size=1024, 
+                 crop_size=(512, 512),
+                 scale_factor=16,
+                 mean=[0.485, 0.456, 0.406], 
+                 std=[0.229, 0.224, 0.225],
+                 bd_dilate_size=4):
 
+        super(LoveDA, self).__init__(ignore_label, base_size,
+                                     crop_size, scale_factor, mean, std)
 
-LABEL_MAP = OrderedDict(
-    Background=0,
-    Building=1,
-    Road=2,
-    Water=3,
-    Barren=4,
-    Forest=5,
-    Agricultural=6
-)
+        self.root = root
+        self.list_path = list_path
+        self.num_classes = num_classes
 
-
-
-def reclassify(cls):
-    new_cls = np.ones_like(cls, dtype=np.int64) * -1
-    for idx, label in enumerate(LABEL_MAP.values()):
-        new_cls = np.where(cls == idx, np.ones_like(cls)*label, new_cls)
-    return new_cls
-
-
-
-class LoveDA(Dataset):
-    def __init__(self, image_dir, mask_dir, transforms=None):
-        self.rgb_filepath_list = []
-        self.cls_filepath_list= []
-        if isinstance(image_dir, list) and isinstance(mask_dir, list):
-            for img_dir_path, mask_dir_path in zip(image_dir, mask_dir):
-                self.batch_generate(img_dir_path, mask_dir_path)
-        elif isinstance(image_dir, list) and not isinstance(mask_dir, list):
-            for img_dir_path in image_dir:
-                self.batch_generate(img_dir_path, mask_dir)
-        else:
-            self.batch_generate(image_dir, mask_dir)
-
-        self.transforms = transforms
-
-
-    def batch_generate(self, image_dir, mask_dir):
-        rgb_filepath_list = glob.glob(os.path.join(image_dir, '*.tif'))
-        rgb_filepath_list += glob.glob(os.path.join(image_dir, '*.png'))
+        self.multi_scale = multi_scale
+        self.flip = flip
         
-        logger.info('%s -- Dataset images: %d' % (os.path.dirname(image_dir), len(rgb_filepath_list)))
-        rgb_filename_list = [os.path.split(fp)[-1] for fp in rgb_filepath_list]
-        cls_filepath_list = []
-        if mask_dir is not None:
-            for fname in rgb_filename_list:
-                cls_filepath_list.append(os.path.join(mask_dir, fname))
-        self.rgb_filepath_list += rgb_filepath_list
-        self.cls_filepath_list += cls_filepath_list
+        # Load image and mask paths from list file
+        self.img_list = [line.strip().split() for line in open(os.path.join(root, list_path))]
 
-    def __getitem__(self, idx):
-        image = imread(self.rgb_filepath_list[idx])
-        if len(self.cls_filepath_list) > 0:
-            mask = imread(self.cls_filepath_list[idx]).astype(np.long) -1
-            if self.transforms is not None:
-                blob = self.transforms(image=image, mask=mask)
-                image = blob['image']
-                mask = blob['mask']
+        # Parse the image and label paths into structured files
+        self.files = self.read_files()
 
-            return image, dict(cls=mask, fname=os.path.basename(self.rgb_filepath_list[idx]))
-        else:
-            if self.transforms is not None:
-                blob = self.transforms(image=image)
-                image = blob['image']
-
-            return image, dict(fname=os.path.basename(self.rgb_filepath_list[idx]))
-
-    def __len__(self):
-        return len(self.rgb_filepath_list)
+        # Define class weights for LoveDA (these are placeholders, adjust if needed)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.class_weights = torch.FloatTensor([1.0, 2.0, 2.0, 1.5, 1.5, 1.0, 1.2])
 
 
-@er.registry.DATALOADER.register()
-class LoveDALoader(DataLoader, ConfigurableMixin):
-    def __init__(self, config):
-        ConfigurableMixin.__init__(self, config)
-        dataset = LoveDA(self.config.image_dir, self.config.mask_dir, self.config.transforms)
-        if self.config.CV.i != -1:
-            CV = CrossValSamplerGenerator(dataset, distributed=True, seed=2333)
-            sampler_pairs = CV.k_fold(self.config.CV.k)
-            train_sampler, val_sampler = sampler_pairs[self.config.CV.i]
-            if self.config.training:
-                sampler = train_sampler
-            else:
-                sampler = val_sampler
-        else:
-            sampler = distributed.StepDistributedSampler(dataset) if self.config.training else SequentialSampler(
-                dataset)
+        self.bd_dilate_size = bd_dilate_size
 
-        super(LoveDALoader, self).__init__(dataset,
-                                       self.config.batch_size,
-                                       sampler=sampler,
-                                       num_workers=self.config.num_workers,
-                                       pin_memory=True,
-                                       drop_last=True
-                                       )
-    def set_default_config(self):
-        self.config.update(dict(
-            image_dir=None,
-            mask_dir=None,
-            batch_size=4,
-            num_workers=4,
-            transforms=Compose([
-                OneOf([
-                    HorizontalFlip(True),
-                    VerticalFlip(True),
-                    RandomRotate90(True),
-                ], p=0.75),
-                Normalize(mean=(), std=(), max_pixel_value=1, always_apply=True),
-                ToTensorV2()
-            ]),
-        ))
+    def read_files(self):
+        """Parse image and label paths from the list."""
+        files = []
+        for item in self.img_list:
+            image_path, label_path = item
+            name = os.path.splitext(os.path.basename(label_path))[0]
+            files.append({
+                "img": image_path,
+                "label": label_path,
+                "name": name
+            })
+        return files
+
+    def __getitem__(self, index):
+        """Load and preprocess an image and its corresponding label."""
+        item = self.files[index]
+        name = item["name"]
+        image = cv2.imread(os.path.join(self.root, item["img"]), cv2.IMREAD_COLOR)
+        size = image.shape
+
+        label = cv2.imread(os.path.join(self.root, item["label"]), cv2.IMREAD_GRAYSCALE)
+
+        # Generate the transformed sample (image, label, and edge)
+        image, label, edge = self.gen_sample(image, label, 
+                                             self.multi_scale, self.flip, 
+                                             edge_size=self.bd_dilate_size)
+
+        return image.copy(), label.copy(), edge.copy(), np.array(size), name
+
+    def single_scale_inference(self, config, model, image):
+        """Perform single-scale inference."""
+        pred = self.inference(config, model, image)
+        return pred
+
+    def save_pred(self, preds, sv_path, name):
+        """Save predictions as PNG images."""
+        preds = np.asarray(np.argmax(preds.cpu(), axis=1), dtype=np.uint8)
+        for i in range(preds.shape[0]):
+            save_img = Image.fromarray(preds[i])
+            save_img.save(os.path.join(sv_path, name[i] + '.png'))

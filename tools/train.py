@@ -73,23 +73,33 @@ def main():
     cudnn.deterministic = config.CUDNN.DETERMINISTIC
     cudnn.enabled = config.CUDNN.ENABLED
     gpus = list(config.GPUS)
-    if torch.cuda.device_count() != len(gpus):
-        print("The gpu numbers do not match!")
-        return 0
+    
+    if len(gpus) == 0 or torch.cuda.device_count() == 0:  # Fallback to CPU
+        print("No GPUs detected or configured. Using CPU.")
+        device = torch.device('cpu')
+    else:
+        device = torch.device('cuda')
     
     imgnet = 'imagenet' in config.MODEL.PRETRAINED
-    model = models.pidnet.get_seg_model(config, imgnet_pretrained=imgnet)
+    model = models.pidnet.get_seg_model(config, imgnet_pretrained=imgnet).to(device)
  
+    gpu_count = max(len(gpus), 1)
     batch_size = config.TRAIN.BATCH_SIZE_PER_GPU * len(gpus)
     # prepare data
     crop_size = (config.TRAIN.IMAGE_SIZE[1], config.TRAIN.IMAGE_SIZE[0])
 
     if config.DATASET.DATASET == 'loveda':
         train_dataset = LoveDA(
-            image_dir='data/loveda/images_png',
-            mask_dir='data/loveda/masks_png',
-            transforms=None  # Add any required transformations here
-        )
+            root=config.DATASET.ROOT,
+            list_path=config.DATASET.TRAIN_SET,
+            num_classes=config.DATASET.NUM_CLASSES,
+            multi_scale=config.TRAIN.MULTI_SCALE,
+            flip=config.TRAIN.FLIP,
+            ignore_label=config.TRAIN.IGNORE_LABEL,
+            base_size=config.TRAIN.BASE_SIZE,
+            crop_size=crop_size,
+            scale_factor=config.TRAIN.SCALE_FACTOR
+    )
     else:
         train_dataset = eval('datasets.' + config.DATASET.DATASET)(
             root=config.DATASET.ROOT,
@@ -135,7 +145,7 @@ def main():
 
     testloader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=config.TEST.BATCH_SIZE_PER_GPU * len(gpus),
+        batch_size=1,
         shuffle=False,
         num_workers=config.WORKERS,
         pin_memory=False)
