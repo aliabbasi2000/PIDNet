@@ -127,9 +127,14 @@ def main():
 
     if config.DATASET.DATASET == 'loveda':
         test_dataset = LoveDA(
-            image_dir=os.path.join(config.DATASET.ROOT, 'data/loveda/images_png'),
-            mask_dir=os.path.join(config.DATASET.ROOT, 'data/loveda/masks_png'),
-            transforms=None  # Add required transformations
+            root=config.DATASET.ROOT,
+            list_path=config.DATASET.TEST_SET,
+            num_classes=config.DATASET.NUM_CLASSES,
+            multi_scale=False,
+            flip=False,
+            ignore_label=config.TRAIN.IGNORE_LABEL,
+            base_size=config.TEST.BASE_SIZE,
+            crop_size=test_size
         )
     else:
         test_dataset = eval('datasets.' + config.DATASET.DATASET)(
