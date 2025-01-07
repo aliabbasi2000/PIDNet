@@ -29,17 +29,17 @@ LOSS:
   
 TRAIN:
   IMAGE_SIZE:
-  - 1024  # Adjusted to LoveDA dataset resolution
-  - 1024
-  BASE_SIZE: 1024
-  BATCH_SIZE_PER_GPU: 2  # Adjust based on GPU memory
+  - 512  # Adjusted to LoveDA dataset resolution
+  - 512
+  BASE_SIZE: 512
+  BATCH_SIZE_PER_GPU: 8  # Adjust based on GPU memory
   SHUFFLE: true
   BEGIN_EPOCH: 0
   END_EPOCH: 20  # Set training epochs to 20
   RESUME: false
   OPTIMIZER: sgd
-  LR: 0.005
-  WD: 0.0005
+  LR: 0.001
+  WD: 0.0001
   MOMENTUM: 0.9
   NESTEROV: false
   FLIP: true
