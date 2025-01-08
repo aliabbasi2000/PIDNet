@@ -38,7 +38,7 @@ TRAIN:
   END_EPOCH: 20  # Set training epochs to 20
   RESUME: false
   OPTIMIZER: sgd
-  LR: 0.001
+  LR: 0.0001
   WD: 0.0001
   MOMENTUM: 0.9
   NESTEROV: false
